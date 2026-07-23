@@ -1,0 +1,65 @@
+name: Verify Pull Request
+
+on:
+  pull_request:
+
+env:
+  DOTNET_VERSION: 10.0.x
+
+jobs:
+  verify-code:
+    name: Verify Code Format
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout (github)
+      uses: actions/checkout@v7
+
+    - name: Setup .NET ${{ env.DOTNET_VERSION }}
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Verify Formatting
+      run: dotnet format --verify-no-changes --verbosity diagnostic
+
+  verify-tests:
+    name: Verify Tests on ${{ matrix.os }}
+    needs: [verify-code]
+
+    timeout-minutes: 5
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - name: Checkout (github)
+      uses: actions/checkout@v7
+
+    - name: Setup .NET ${{ env.DOTNET_VERSION }}
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Build
+      run: dotnet build -p:GITHUB_ACTIONS=true
+
+    - name: Test
+      run: >
+        dotnet test --no-build
+        --logger "junit;LogFilePath=TestResults/{assembly}.xml"
+        --binaryLogger:${{ matrix.os }}.binlog
+        -p:GITHUB_ACTIONS=true
+
+    - name: Publish Test Results
+      uses: test-summary/action@dist
+      if: always()
+      with:
+        paths: |
+          tests/**/TestResults/**/*.xml
+        folded: true
+        show: "all"
